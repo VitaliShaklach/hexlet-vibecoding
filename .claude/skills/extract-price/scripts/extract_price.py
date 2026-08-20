@@ -350,6 +350,23 @@ def pick_current(items: list[tuple[str, float]]) -> float:
     return items[0][1]
 
 
+def script_current_is_ambiguous(items: list[tuple[str, float]]) -> bool:
+    """Под выбранным ключом лежит несколько разных цен — значит, порядок решает, а не смысл.
+
+    Так выглядит страница, где в JS-состоянии рядом с товаром едут соседние карточки:
+    три разных `price` подряд, и какой окажется первым — дело случая. Цену с такой
+    страницы брать из скрипта нельзя, разбор будет прыгать от запроса к запросу.
+    """
+    if not items:
+        return False
+    chosen = pick_current(items)
+    keys = [key.lower() for key, value in items if value == chosen]
+    if not keys:
+        return False
+    same_key = {value for key, value in items if key.lower() == keys[0]}
+    return len(same_key) > 1
+
+
 def extract(html: str) -> tuple[dict, dict]:
     """Вернуть (результат, разбор источников)."""
     parser = PriceParser()
@@ -372,6 +389,20 @@ def extract(html: str) -> tuple[dict, dict]:
     if script_prices.get("current"):
         current = pick_current(script_prices["current"])
         evidence["current_from"] = "script/json-ld"
+        # Скрипт даёт несколько разных цен под одним ключом — доверяем вёрстке,
+        # если она показывает ровно одну цену: это то, что видит покупатель.
+        if script_current_is_ambiguous(script_prices["current"]):
+            dom_values = {c["value"] for c in dom_new}
+            if len(dom_values) == 1:
+                current = dom_new[0]["value"]
+                evidence["current_from"] = dom_new[0]["source"]
+                evidence["note_current"] = (
+                    "в скрипте несколько разных цен, взята однозначная цена из вёрстки"
+                )
+            else:
+                evidence["note_current"] = (
+                    "в скрипте несколько разных цен, вёрстка их не разрешает — цена ненадёжна"
+                )
     elif parser.meta_prices:
         current = parser.meta_prices[0][1]
         evidence["current_from"] = "microdata/meta"

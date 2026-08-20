@@ -29,6 +29,11 @@ CASES = [
         "цена во встроенном JS-состоянии (oldPrice/price), рассрочка через Halva",
     ),
     (
+        "ambiguous_jsstate.html",
+        {"regular_price": 124.0, "sale_price": None, "has_credit": True},
+        "в JS-состоянии три разных price от соседних карточек — берётся однозначная цена из вёрстки",
+    ),
+    (
         "plain_microdata.html",
         {"regular_price": 289.5, "sale_price": None, "has_credit": False},
         "микроразметка без скидки; «Рассрочка» только в подвале — не считается",

@@ -1,0 +1,10 @@
+# Зашитый список URL для прогона tracker.
+# Одна строка — один товар. Пустые строки и строки с # игнорируются.
+
+https://catalog.onliner.by/pump/jileks/6550prof
+https://nasosov.by/catalog/vodomet_prof_55_35_a_df_dzhileks_6535/
+https://www.teplodvor.by/shop/nasosy/kolodeznye-nasosy/nasos-pogruzhnoj-vibraczionnyj-aqualink-vp-d-6518-25/
+https://larek.by/catalog/vodosnabzhenie/nasosnoe_oborudovanie/kolodeznye_nasosy/aquario_kolodeznyy_nasos_asp6_35_100w/
+https://5element.by/products/772895-nasos-vibracionnyy-stavr-npv-300n25-st300n25npv
+https://progreem.by/catalog/vodosnabzhenie/nasosy/nasosnye-stantsii/ibo-jet100a-tf-50-suh-hod/
+https://www.wildberries.by/catalog/109676366/detail.aspx

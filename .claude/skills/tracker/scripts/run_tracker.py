@@ -11,7 +11,7 @@
     python3 run_tracker.py --format json      # тот же прогон в JSON
     python3 run_tracker.py --format csv
     python3 run_tracker.py --urls my.txt      # другой список вместо зашитого
-    python3 run_tracker.py --out runs/2026-08-20.md
+    python3 run_tracker.py --out prices.md    # файл — только по просьбе пользователя
 
 Коды возврата: 0 — все URL отработали, 1 — часть строк осталась без цены
 (их нужно добрать вручную по инструкции extract-price).

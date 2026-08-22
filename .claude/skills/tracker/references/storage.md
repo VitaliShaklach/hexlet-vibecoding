@@ -62,6 +62,13 @@
 
 Порядок:
 
+0. Убедиться, что `tracker-data` вообще доступен сессии. В сессии выбирают один
+   репозиторий — обычно `hexlet-vibecoding`, где лежат скиллы, — и тогда вызовы
+   GitHub MCP к `tracker-data` отвергаются как «вне scope». Подключить его:
+   `mcp__Claude_Code_Remote__add_repo` с `owner: VitaliShaklach`,
+   `repo: tracker-data`, `access: push`. Пользователь подтвердит подключение.
+   Проверить, что репозиторий уже подключён, — `mcp__Claude_Code_Remote__list_repos`.
+
 1. `mcp__github__get_file_contents` с тем же `path` — проверить, был ли прогон
    за эту дату.
 2. Файла нет — вызвать `create_or_update_file` без `sha`.

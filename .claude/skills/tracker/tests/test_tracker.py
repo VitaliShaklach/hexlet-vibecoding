@@ -68,10 +68,18 @@ def main() -> int:
         if run_data["total"] != len(CASES) or run_data["ok"] != len(CASES):
             failures.append(f"итоги прогона: {run_data['total']}/{run_data['ok']}")
 
+        # 2a. Название товара от extract-price доезжает до строки прогона:
+        # без него в выводе остаётся голая ссылка, по которой не понять, что за товар.
+        for row, (name, *_) in zip(rows, CASES):
+            if not row.get("title"):
+                failures.append(f"{name}: название товара не попало в строку прогона")
+
         # 3. Таблица собирается в markdown: шапка на месте, строк столько же.
         markdown = run(urls_file, "markdown").stdout
         if "| URL | regular_price | sale_price | has_credit |" not in markdown:
             failures.append("в markdown-таблице нет шапки с полями цены")
+        if "| Товар |" not in markdown:
+            failures.append("в markdown-таблице нет колонки с названием товара")
         if markdown.count("| file://") != len(CASES):
             failures.append("в markdown-таблице не все строки товаров")
 

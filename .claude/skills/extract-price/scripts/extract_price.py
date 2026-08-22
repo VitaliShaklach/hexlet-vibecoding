@@ -8,7 +8,10 @@
     python3 extract_price.py <URL> --debug     # разбор источников в stderr
 
 Вывод в stdout — ровно один JSON-объект:
-    {"regular_price": 1349.0, "sale_price": 1199.99, "has_credit": true}
+    {"title": "Насос Джилекс Водомет Проф 55/50 А",
+     "regular_price": 1349.0, "sale_price": 1199.99, "has_credit": true}
+
+Название — подпись для человека, на цену не влияет: не нашлось — null.
 
 Коды возврата: 0 — цена найдена, 2 — цена не найдена, 3 — страницу не скачать.
 Зависимостей нет, только стандартная библиотека.
@@ -23,6 +26,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from html import unescape
 from html.parser import HTMLParser
 
 USER_AGENT = (
@@ -441,11 +445,72 @@ def extract(html: str) -> tuple[dict, dict]:
     evidence["credit_match"] = credit_match.group(0) if credit_match else None
 
     result = {
+        "title": extract_title(html),
         "regular_price": regular,
         "sale_price": sale,
         "has_credit": credit_match is not None,
     }
     return result, evidence
+
+
+# Название товара: короткая подпись под ссылкой, чтобы человек понимал, что за
+# товар, не открывая страницу. На цену название не влияет: не нашлось — не нашлось.
+#
+# Порядок источников — по чистоте, а не по «правильности» разметки. На реальных
+# магазинах <h1> — это ровно название товара, а og:title и <title> заполняет SEO:
+# «Купить … в Минске», «ᐉ … ✔️по низкой цене», «… от магазина larek.by». Поэтому
+# сначала <h1>, и только если он пустой или подозрительно короткий (значит, там
+# не название товара, а что-то вроде «Каталог») — meta и <title>.
+TITLE_MAX = 90
+
+# Ниже этой длины заголовок на название товара не похож.
+TITLE_MIN = 8
+
+OG_TITLE_RE = (
+    re.compile(r'<meta[^>]+(?:property|name)=["\']og:title["\'][^>]*?content='
+               r'["\']([^"\']+)', re.I),
+    re.compile(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]*?'
+               r'(?:property|name)=["\']og:title["\']', re.I),
+)
+H1_RE = re.compile(r"<h1[^>]*>(.*?)</h1>", re.I | re.S)
+TITLE_TAG_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
+TAG_RE = re.compile(r"<[^>]+>")
+
+# Хвост вида «— 5 элемент» или «| купить в Минске» отрезаем: он в каждой строке
+# одинаковый и только съедает ширину.
+TITLE_TAIL_RE = re.compile(r"\s*[|—–]\s*[^|—–]{0,60}$")
+
+
+def clean_title(raw: str) -> str:
+    text = unescape(TAG_RE.sub(" ", raw))
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def extract_title(html: str) -> str | None:
+    """Название товара со страницы; None, если внятного названия нет."""
+    match = H1_RE.search(html)
+    if match:
+        title = clean_title(match.group(1))
+        if len(title) >= TITLE_MIN:
+            return title[:TITLE_MAX].strip()
+
+    for pattern in OG_TITLE_RE:
+        match = pattern.search(html)
+        if match:
+            title = clean_title(match.group(1))
+            if len(title) >= TITLE_MIN:
+                return title[:TITLE_MAX].strip()
+
+    match = TITLE_TAG_RE.search(html)
+    if match:
+        title = clean_title(match.group(1))
+        trimmed = TITLE_TAIL_RE.sub("", title).strip()
+        # Хвост режем, только если от названия что-то осталось.
+        title = trimmed if len(trimmed) >= TITLE_MIN else title
+        if len(title) >= TITLE_MIN:
+            return title[:TITLE_MAX].strip()
+
+    return None
 
 
 def fetch_html(url: str) -> str:

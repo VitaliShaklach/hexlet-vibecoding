@@ -3,7 +3,7 @@
 """Сравнение двух прогонов tracker и отбор значимых изменений.
 
 Товары сопоставляются по URL, сравниваются regular_price, sale_price и
-has_credit. Пороги и формулировки — из KNOWLEDGE.md в корне репозитория,
+has_credit. Пороги и формулировки — из KNOWLEDGE.md рядом с этим скиллом,
 здесь они только запрограммированы; расходиться эти два файла не должны.
 
 Использование:
@@ -46,6 +46,18 @@ def load_run(path: Path) -> dict:
 def index_rows(run: dict) -> dict[str, dict]:
     """Строки прогона по URL — URL и есть ключ сопоставления товаров."""
     return {row["url"]: row for row in run["rows"] if row.get("url")}
+
+
+def pick_title(*rows) -> str | None:
+    """Название товара из первой строки, где оно есть.
+
+    Берём из текущего прогона, а для пропавшего товара — из прошлого. Старые
+    файлы прогонов названий не содержат вовсе: тогда останется одна ссылка.
+    """
+    for row in rows:
+        if row and row.get("title"):
+            return row["title"]
+    return None
 
 
 def pct_change(old: float, new: float) -> float | None:
@@ -131,7 +143,8 @@ def diff_runs(prev: dict | None, curr: dict) -> dict:
 
         # Состав списка: нового товара в прошлом прогоне просто нет.
         if prev_row is None:
-            result["changes"].append({"url": url, "lines": ["Новый товар в списке"]})
+            result["changes"].append({"url": url, "title": pick_title(curr_row),
+                                      "lines": ["Новый товар в списке"]})
             continue
 
         # Недобранная строка значения не даёт: сбой парсера — не движение цены.
@@ -139,20 +152,23 @@ def diff_runs(prev: dict | None, curr: dict) -> dict:
             broken = curr_row if curr_row.get("status") != OK_STATUS else prev_row
             result["no_data"].append({
                 "url": url,
+                "title": pick_title(curr_row, prev_row),
                 "reason": broken.get("note") or broken.get("status") or "нет данных",
             })
             continue
 
         significant, skipped = compare_row(prev_row, curr_row)
+        title = pick_title(curr_row, prev_row)
         if significant:
-            result["changes"].append({"url": url, "lines": significant})
+            result["changes"].append({"url": url, "title": title, "lines": significant})
         if skipped:
-            result["skipped"].append({"url": url, "lines": skipped})
+            result["skipped"].append({"url": url, "title": title, "lines": skipped})
 
     # Пропавшие из списка — в конце: в текущем прогоне их строк уже нет.
     for url in prev_rows:
         if url not in curr_rows:
-            result["changes"].append({"url": url, "lines": ["Товар пропал из списка"]})
+            result["changes"].append({"url": url, "title": pick_title(prev_rows[url]),
+                                      "lines": ["Товар пропал из списка"]})
 
     return result
 
@@ -164,9 +180,12 @@ def to_text(result: dict, show_all: bool = False) -> str:
     out = [f"Значимые изменения: {result['prev_date']} → {result['curr_date']}", ""]
 
     if result["changes"]:
-        for item in result["changes"]:
-            out.append(item["url"])
-            out += [f"  {line}" for line in item["lines"]]
+        # По пунктам: номер, ссылка, под ней название товара, дальше сами изменения.
+        for index, item in enumerate(result["changes"], 1):
+            out.append(f"{index}. {item['url']}")
+            if item.get("title"):
+                out.append(f"   {item['title']}")
+            out += [f"   - {line}" for line in item["lines"]]
             out.append("")
     else:
         out += ["Значимых изменений нет.", ""]
@@ -180,12 +199,19 @@ def to_text(result: dict, show_all: bool = False) -> str:
 
     if show_all and result["skipped"]:
         out += ["", "Отброшено как незначимое (≤ 5 %):"]
-        for item in result["skipped"]:
-            out += [f"  {item['url']}"] + [f"    {line}" for line in item["lines"]]
+        for index, item in enumerate(result["skipped"], 1):
+            out.append(f"{index}. {item['url']}")
+            if item.get("title"):
+                out.append(f"   {item['title']}")
+            out += [f"   - {line}" for line in item["lines"]]
 
     if result["no_data"]:
         out += ["", "Нет данных для сравнения:"]
-        out += [f"  {i['url']} — {i['reason']}" for i in result["no_data"]]
+        for index, item in enumerate(result["no_data"], 1):
+            out.append(f"{index}. {item['url']}")
+            if item.get("title"):
+                out.append(f"   {item['title']}")
+            out.append(f"   - {item['reason']}")
 
     return "\n".join(out) + "\n"
 

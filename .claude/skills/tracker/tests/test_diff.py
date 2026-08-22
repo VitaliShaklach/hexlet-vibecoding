@@ -21,8 +21,8 @@ SKILL_DIR = Path(__file__).resolve().parent.parent
 DIFFER = SKILL_DIR / "scripts" / "diff_runs.py"
 
 
-def row(url, regular=None, sale=None, credit=False, status="ok", note=""):
-    return {"url": url, "regular_price": regular, "sale_price": sale,
+def row(url, regular=None, sale=None, credit=False, status="ok", note="", title=None):
+    return {"url": url, "title": title, "regular_price": regular, "sale_price": sale,
             "has_credit": credit, "status": status, "note": note}
 
 
@@ -76,7 +76,7 @@ def main() -> int:
             row("u/credit-off", regular=90.00,  credit=True),    # рассрочка пропадёт
             row("u/broken-now", regular=150.00),                 # сломается в текущем
             row("u/was-broken", status="no_price", note="цена не найдена"),
-            row("u/gone",       regular=50.00),                  # пропадёт из списка
+            row("u/gone",       regular=50.00, title="Насос Ручеек-1"),  # пропадёт из списка
         ])
 
         curr = run_file(tmp, "curr.json", "2026-08-22", [
@@ -85,7 +85,7 @@ def main() -> int:
             row("u/noise",      regular=100.03),
             row("u/edge",       regular=105.00),
             row("u/edge-float", regular=503.4645),
-            row("u/jump-up",    regular=360.00),
+            row("u/jump-up",    regular=360.00, title="Насос Джилекс Водомет 55/50"),
             row("u/jump-down",  regular=400.00),
             row("u/sale-gone",  regular=200.00, sale=None),
             row("u/sale-new",   regular=250.00, sale=225.00),
@@ -94,7 +94,7 @@ def main() -> int:
             row("u/credit-off", regular=90.00,  credit=False),
             row("u/broken-now", status="fetch_failed", note="HTTP Error 498: "),
             row("u/was-broken", regular=310.00),
-            row("u/new",        regular=77.00),
+            row("u/new",        regular=77.00, title="Насос вибрационный STAVR"),
         ])
 
         completed = diff(str(prev), str(curr), "--format", "json")
@@ -160,14 +160,25 @@ def main() -> int:
         check("отброшено незначимых: 4" in text,  # noise, edge, edge-float, sale-noise
               f"в сводке неверное число отброшенных:\n{text}")
 
-        # 8. Прошлого прогона нет — это первый запуск, а не «всё новое».
+        # 8. Вывод по пунктам, под ссылкой — название товара.
+        check("1. " in text and "2. " in text, f"вывод не пронумерован:\n{text}")
+        check("\n   - Цена: 300.00 → 360.00 BYN (+20.0%)" in text,
+              f"изменения не оформлены пунктами под товаром:\n{text}")
+        check("\n   Насос Джилекс Водомет 55/50\n" in text,
+              f"название товара не встало под ссылкой:\n{text}")
+        # Название пропавшего товара берётся из прошлого прогона — в текущем его нет.
+        check("Насос Ручеек-1" in text, "у пропавшего товара потерялось название")
+        # Старый файл прогона названий не содержит: строка без title не должна ломаться.
+        check("u/sale-gone" in text, "товар без названия выпал из вывода")
+
+        # 9. Прошлого прогона нет — это первый запуск, а не «всё новое».
         first = json.loads(diff(str(curr), "--format", "json").stdout)
         check(first["first_run"] is True, "одиночный прогон не признан первым запуском")
         check(first["changes"] == [], "у первого запуска появились изменения")
         check("Первый прогон" in diff(str(curr)).stdout,
               "первый запуск не объявлен в текстовом выводе")
 
-        # 9. Битый файл — понятная ошибка, а не трейсбек.
+        # 10. Битый файл — понятная ошибка, а не трейсбек.
         garbage = tmp / "garbage.json"
         garbage.write_text("{не json", encoding="utf-8")
         broken = diff(str(garbage), str(curr))

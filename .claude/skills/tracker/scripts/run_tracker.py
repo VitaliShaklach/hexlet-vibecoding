@@ -36,7 +36,9 @@ EXTRACT_PRICE = SKILL_DIR.parent / "extract-price" / "scripts" / "extract_price.
 # Запас на медленные магазины: extract-price сам ждёт страницу 25 секунд.
 PER_URL_TIMEOUT = 60
 
-COLUMNS = ("url", "regular_price", "sale_price", "has_credit")
+# title — подпись товара от extract-price: нужна, чтобы под ссылкой было видно,
+# что за товар. На сравнение не влияет, пустая не ломает строку.
+COLUMNS = ("url", "title", "regular_price", "sale_price", "has_credit")
 
 
 def read_urls(path: Path) -> list[str]:
@@ -52,6 +54,7 @@ def call_extract_price(url: str) -> dict:
     """Один вызов скилла extract-price. Возвращает строку будущей таблицы."""
     row = {
         "url": url,
+        "title": None,
         "regular_price": None,
         "sale_price": None,
         "has_credit": None,
@@ -121,13 +124,14 @@ def to_markdown(run: dict) -> str:
         "",
         f"Товаров в списке: {run['total']} · с ценой: {run['ok']} · без цены: {run['failed']}",
         "",
-        "| # | URL | regular_price | sale_price | has_credit |",
-        "|---|-----|---------------|------------|------------|",
+        "| # | Товар | URL | regular_price | sale_price | has_credit |",
+        "|---|-------|-----|---------------|------------|------------|",
     ]
     for index, row in enumerate(run["rows"], 1):
         out.append(
-            f"| {index} | {row['url']} | {fmt(row['regular_price'])} | "
-            f"{fmt(row['sale_price'])} | {fmt(row['has_credit'])} |"
+            f"| {index} | {fmt(row.get('title'))} | {row['url']} | "
+            f"{fmt(row['regular_price'])} | {fmt(row['sale_price'])} | "
+            f"{fmt(row['has_credit'])} |"
         )
     problems = [r for r in run["rows"] if r["status"] != "ok"]
     if problems:

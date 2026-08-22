@@ -30,9 +30,9 @@ CASES = [
 ]
 
 
-def run(urls_file: Path, fmt: str) -> subprocess.CompletedProcess:
+def run(urls_file: Path, fmt: str, *extra: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(RUNNER), "--urls", str(urls_file), "--format", fmt],
+        [sys.executable, str(RUNNER), "--urls", str(urls_file), "--format", fmt, *extra],
         capture_output=True, text=True, timeout=120,
     )
 
@@ -74,6 +74,17 @@ def main() -> int:
             failures.append("в markdown-таблице нет шапки с полями цены")
         if markdown.count("| file://") != len(CASES):
             failures.append("в markdown-таблице не все строки товаров")
+
+        # 4. Дата прогона: попадает в файл и задаётся флагом — от неё имя YYYY-MM-DD.json.
+        dated = json.loads(run(urls_file, "json", "--date", "2026-01-31").stdout)
+        if dated.get("date") != "2026-01-31":
+            failures.append(f"--date не попал в прогон: {dated.get('date')!r}")
+        default_date = json.loads(run(urls_file, "json").stdout).get("date", "")
+        if len(default_date) != 10 or default_date.count("-") != 2:
+            failures.append(f"дата по умолчанию не в формате YYYY-MM-DD: {default_date!r}")
+        bad = run(urls_file, "json", "--date", "31.01.2026")
+        if bad.returncode == 0:
+            failures.append("кривая --date не отвергнута")
 
         # Битый URL не должен ронять прогон — строка остаётся, статус не ok.
         broken = Path(tmp) / "broken.txt"

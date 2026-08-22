@@ -11,7 +11,7 @@
     python3 run_tracker.py --format json      # тот же прогон в JSON
     python3 run_tracker.py --format csv
     python3 run_tracker.py --urls my.txt      # другой список вместо зашитого
-    python3 run_tracker.py --out runs/2026-08-20.md
+    python3 run_tracker.py --format json --out 2026-08-20.json   # файл для tracker-data
 
 Коды возврата: 0 — все URL отработали, 1 — часть строк осталась без цены
 (их нужно добрать вручную по инструкции extract-price).
@@ -152,7 +152,16 @@ def main(argv=None) -> int:
     parser.add_argument("--format", choices=("markdown", "json", "csv"),
                         default="markdown", help="формат таблицы прогона")
     parser.add_argument("--out", help="записать таблицу в файл, а не в stdout")
+    parser.add_argument("--date", help="дата прогона YYYY-MM-DD; по умолчанию сегодняшняя "
+                                       "по часам машины — задать явно, если они врут")
     args = parser.parse_args(argv)
+
+    now = datetime.now(timezone.utc)
+    run_date = args.date or now.strftime("%Y-%m-%d")
+    try:
+        datetime.strptime(run_date, "%Y-%m-%d")
+    except ValueError:
+        parser.error(f"--date ожидает формат YYYY-MM-DD, получено {run_date!r}")
 
     urls = read_urls(Path(args.urls))
     rows = []
@@ -164,7 +173,8 @@ def main(argv=None) -> int:
         rows.append(row)
 
     run = {
-        "started_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "date": run_date,
+        "started_at": now.strftime("%Y-%m-%d %H:%M UTC"),
         "total": len(rows),
         "ok": sum(1 for r in rows if r["status"] == "ok"),
         "failed": sum(1 for r in rows if r["status"] != "ok"),
@@ -185,6 +195,9 @@ def main(argv=None) -> int:
         print(f"таблица прогона записана: {path}", file=sys.stderr)
     else:
         sys.stdout.write(text)
+
+    # Имя файла прогона в tracker-data — по дате прогона, один прогон = один файл.
+    print(f"файл прогона для tracker-data: {run_date}.json", file=sys.stderr)
 
     return 0 if run["failed"] == 0 else 1
 

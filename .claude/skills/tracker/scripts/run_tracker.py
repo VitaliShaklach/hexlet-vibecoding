@@ -12,6 +12,7 @@
     python3 run_tracker.py --format csv
     python3 run_tracker.py --urls my.txt      # другой список вместо зашитого
     python3 run_tracker.py --format json --out 2026-08-20.json   # файл для tracker-data
+    python3 run_tracker.py --out prices.md    # локальный файл — по просьбе пользователя
 
 Коды возврата: 0 — все URL отработали, 1 — часть строк осталась без цены
 (их нужно добрать вручную по инструкции extract-price).

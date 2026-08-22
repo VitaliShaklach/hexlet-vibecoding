@@ -454,10 +454,17 @@ def extract(html: str) -> tuple[dict, dict]:
 
 
 # Название товара: короткая подпись под ссылкой, чтобы человек понимал, что за
-# товар, не открывая страницу. Порядок источников — от самого надёжного:
-# og:title заполняют осознанно, <h1> — заголовок товара, <title> уже с хвостом
-# магазина. На цену название не влияет: не нашлось — не нашлось.
+# товар, не открывая страницу. На цену название не влияет: не нашлось — не нашлось.
+#
+# Порядок источников — по чистоте, а не по «правильности» разметки. На реальных
+# магазинах <h1> — это ровно название товара, а og:title и <title> заполняет SEO:
+# «Купить … в Минске», «ᐉ … ✔️по низкой цене», «… от магазина larek.by». Поэтому
+# сначала <h1>, и только если он пустой или подозрительно короткий (значит, там
+# не название товара, а что-то вроде «Каталог») — meta и <title>.
 TITLE_MAX = 90
+
+# Ниже этой длины заголовок на название товара не похож.
+TITLE_MIN = 8
 
 OG_TITLE_RE = (
     re.compile(r'<meta[^>]+(?:property|name)=["\']og:title["\'][^>]*?content='
@@ -481,26 +488,26 @@ def clean_title(raw: str) -> str:
 
 def extract_title(html: str) -> str | None:
     """Название товара со страницы; None, если внятного названия нет."""
+    match = H1_RE.search(html)
+    if match:
+        title = clean_title(match.group(1))
+        if len(title) >= TITLE_MIN:
+            return title[:TITLE_MAX].strip()
+
     for pattern in OG_TITLE_RE:
         match = pattern.search(html)
         if match:
             title = clean_title(match.group(1))
-            if title:
+            if len(title) >= TITLE_MIN:
                 return title[:TITLE_MAX].strip()
-
-    match = H1_RE.search(html)
-    if match:
-        title = clean_title(match.group(1))
-        if title:
-            return title[:TITLE_MAX].strip()
 
     match = TITLE_TAG_RE.search(html)
     if match:
         title = clean_title(match.group(1))
         trimmed = TITLE_TAIL_RE.sub("", title).strip()
         # Хвост режем, только если от названия что-то осталось.
-        title = trimmed if len(trimmed) >= 8 else title
-        if title:
+        title = trimmed if len(trimmed) >= TITLE_MIN else title
+        if len(title) >= TITLE_MIN:
             return title[:TITLE_MAX].strip()
 
     return None

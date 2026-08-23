@@ -187,40 +187,54 @@ def main() -> int:
               f"нечитаемый прогон дал код {broken.returncode}, ожидался 2")
         check("Traceback" not in broken.stderr, "нечитаемый прогон уронил скрипт трейсбеком")
 
-        # 11. Сводка для Telegram: по строке на изменение, а не на товар.
+        # 11. Сводка для Telegram: пункт на товар, строка на изменение, ссылка внутри.
         tg = diff(str(prev), str(curr), "--format", "telegram")
         check(tg.returncode == 0, f"сводка упала: {tg.stderr.strip()[:200]}")
-        bullets = [line for line in tg.stdout.splitlines() if line.startswith("• ")]
-        expected = sum(len(item["lines"]) for item in result["changes"])
-        check(len(bullets) == expected,
-              f"строк в сводке {len(bullets)}, изменений {expected} — не по строке на изменение")
+        tg_lines = tg.stdout.splitlines()
+        bullets = [l.strip() for l in tg_lines if l.strip().startswith("• ")]
+        headers = [l for l in tg_lines if l and l[0].isdigit() and ". " in l[:4]]
+
+        expected_changes = sum(len(item["lines"]) for item in result["changes"])
+        check(len(bullets) == expected_changes,
+              f"строк в сводке {len(bullets)}, изменений {expected_changes}")
+        check(len(headers) == len(result["changes"]),
+              f"пунктов {len(headers)}, товаров с изменениями {len(result['changes'])}")
         check(f"Изменения цен {result['curr_date']}" in tg.stdout,
               "в заголовке сводки нет даты текущего прогона")
 
-        # Строка самодостаточна: в ней и товар, и что с ним произошло.
-        named = [b for b in bullets if "Насос Джилекс Водомет 55/50" in b]
-        check(len(named) == 1, f"товар с названием дал {len(named)} строк, ожидалась одна")
-        check("360.00" in named[0] and "+20.0%" in named[0],
-              f"в строке сводки нет сути изменения: {named[0]!r}")
-        check(named[0].count(" — ") >= 1, f"нет отбивки товара от изменения: {named[0]!r}")
+        # Товар — заголовок пункта, а не приписка к каждой строке.
+        titled = [h for h in headers if "Насос Джилекс Водомет 55/50" in h]
+        check(len(titled) == 1, f"товар с названием дал {len(titled)} заголовков, нужен один")
+        check(not any("Насос Джилекс" in b for b in bullets),
+              "название товара повторяется в строках изменений — группировка не сработала")
 
-        # Товар с двумя изменениями даёт две строки, обе подписаны им же.
-        two = [b for b in bullets if "STAVR" in b]
-        check(len(two) == 1, "новый товар не дал ровно одну строку сводки")
+        # У каждого пункта есть ссылка, по которой можно перейти.
+        for item in result["changes"]:
+            check(item["url"] in tg.stdout, f"в сводке нет ссылки на {item['url']}")
 
-        # Названия нет — подписью идёт URL, пункт не теряется.
-        check(any("u/sale-gone" in b for b in bullets),
-              "товар без названия выпал из сводки для Telegram")
+        # Названия нет — заголовком идёт ссылка, и второй раз она не печатается.
+        check(any(h.endswith("u/sale-gone") for h in headers),
+              "товар без названия не стал заголовком со ссылкой")
+        check(tg.stdout.count("u/sale-gone") == 1,
+              "у безымянного товара ссылка напечатана дважды")
 
-        # Ссылок у названного товара в сводке нет: они удваивают длину.
-        check("u/jump-up" not in " ".join(named), f"в сводку просочилась ссылка: {named[0]!r}")
+        # Суть изменения не потерялась при перегруппировке.
+        price_line = [b for b in bullets if "360.00" in b]
+        check(len(price_line) == 1 and "+20.0%" in price_line[0],
+              f"в строке изменения нет было/стало/процента: {price_line!r}")
+        check(price_line and price_line[0].startswith("• цена:"),
+              f"строка изменения не начинается со строчной буквы: {price_line!r}")
 
         # Итоговая строка — общая с текстовым форматом, цифры не расходятся.
         text_tail = [l for l in diff(str(prev), str(curr)).stdout.splitlines()
                      if l.startswith("Итого:")]
-        tg_tail = [l for l in tg.stdout.splitlines() if l.startswith("Итого:")]
+        tg_tail = [l for l in tg_lines if l.startswith("Итого:")]
         check(tg_tail == text_tail,
               f"итоговые строки разъехались: {tg_tail} против {text_tail}")
+
+        # Сводка — обычный текст: без разметки её не испортит отправка как есть.
+        check("<a href" not in tg.stdout and "](" not in tg.stdout,
+              "в сводку просочилась разметка — она уйдёт в Telegram сырыми тегами")
 
         # 12. Значимого нет — сообщение всё равно уходит, с датой и счётчиком.
         quiet_prev = run_file(tmp, "quiet_prev.json", "2026-08-21", [row("u/noise", regular=100.00)])

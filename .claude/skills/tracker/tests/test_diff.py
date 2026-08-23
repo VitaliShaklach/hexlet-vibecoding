@@ -4,7 +4,8 @@
 
 Сеть не нужна — прогоны собираются прямо здесь. Проверяется ровно зона
 ответственности diff_runs.py: товары сопоставлены по URL, поля сравнены,
-незначимое отброшено, недобранные строки не выданы за движение цены.
+незначимое отброшено, недобранные строки не выданы за движение цены,
+а сводка для Telegram собрана по строке на изменение.
 
     python3 .claude/skills/tracker/tests/test_diff.py
 """
@@ -185,6 +186,57 @@ def main() -> int:
         check(broken.returncode == 2,
               f"нечитаемый прогон дал код {broken.returncode}, ожидался 2")
         check("Traceback" not in broken.stderr, "нечитаемый прогон уронил скрипт трейсбеком")
+
+        # 11. Сводка для Telegram: по строке на изменение, а не на товар.
+        tg = diff(str(prev), str(curr), "--format", "telegram")
+        check(tg.returncode == 0, f"сводка упала: {tg.stderr.strip()[:200]}")
+        bullets = [line for line in tg.stdout.splitlines() if line.startswith("• ")]
+        expected = sum(len(item["lines"]) for item in result["changes"])
+        check(len(bullets) == expected,
+              f"строк в сводке {len(bullets)}, изменений {expected} — не по строке на изменение")
+        check(f"Изменения цен {result['curr_date']}" in tg.stdout,
+              "в заголовке сводки нет даты текущего прогона")
+
+        # Строка самодостаточна: в ней и товар, и что с ним произошло.
+        named = [b for b in bullets if "Насос Джилекс Водомет 55/50" in b]
+        check(len(named) == 1, f"товар с названием дал {len(named)} строк, ожидалась одна")
+        check("360.00" in named[0] and "+20.0%" in named[0],
+              f"в строке сводки нет сути изменения: {named[0]!r}")
+        check(named[0].count(" — ") >= 1, f"нет отбивки товара от изменения: {named[0]!r}")
+
+        # Товар с двумя изменениями даёт две строки, обе подписаны им же.
+        two = [b for b in bullets if "STAVR" in b]
+        check(len(two) == 1, "новый товар не дал ровно одну строку сводки")
+
+        # Названия нет — подписью идёт URL, пункт не теряется.
+        check(any("u/sale-gone" in b for b in bullets),
+              "товар без названия выпал из сводки для Telegram")
+
+        # Ссылок у названного товара в сводке нет: они удваивают длину.
+        check("u/jump-up" not in " ".join(named), f"в сводку просочилась ссылка: {named[0]!r}")
+
+        # Итоговая строка — общая с текстовым форматом, цифры не расходятся.
+        text_tail = [l for l in diff(str(prev), str(curr)).stdout.splitlines()
+                     if l.startswith("Итого:")]
+        tg_tail = [l for l in tg.stdout.splitlines() if l.startswith("Итого:")]
+        check(tg_tail == text_tail,
+              f"итоговые строки разъехались: {tg_tail} против {text_tail}")
+
+        # 12. Значимого нет — сообщение всё равно уходит, с датой и счётчиком.
+        quiet_prev = run_file(tmp, "quiet_prev.json", "2026-08-21", [row("u/noise", regular=100.00)])
+        quiet_curr = run_file(tmp, "quiet_curr.json", "2026-08-22", [row("u/noise", regular=100.03)])
+        quiet = diff(str(quiet_prev), str(quiet_curr), "--format", "telegram")
+        check("Значимых изменений цен на 2026-08-22 нет." in quiet.stdout,
+              f"нет точной формулировки про отсутствие изменений: {quiet.stdout!r}")
+        check("отброшено незначимых: 1" in quiet.stdout,
+              f"в пустой сводке нет счётчика отброшенных: {quiet.stdout!r}")
+        check(quiet.stdout.strip(), "пустой прогон дал пустое сообщение — бот промолчит")
+
+        # 13. Первый прогон — одна строка, считать нечего.
+        first_tg = diff(str(curr), "--format", "telegram").stdout
+        check("Первый прогон 2026-08-22" in first_tg,
+              f"первый прогон не объявлен в сводке: {first_tg!r}")
+        check("Итого:" not in first_tg, "у первого прогона появилась итоговая строка")
 
     for line in failures:
         print(f"FAIL {line}")

@@ -4,7 +4,8 @@
 
 Сеть не нужна — прогоны собираются прямо здесь. Проверяется ровно зона
 ответственности diff_runs.py: товары сопоставлены по URL, поля сравнены,
-незначимое отброшено, недобранные строки не выданы за движение цены.
+незначимое отброшено, недобранные строки не выданы за движение цены,
+а сводка для Telegram собрана по строке на изменение.
 
     python3 .claude/skills/tracker/tests/test_diff.py
 """
@@ -185,6 +186,71 @@ def main() -> int:
         check(broken.returncode == 2,
               f"нечитаемый прогон дал код {broken.returncode}, ожидался 2")
         check("Traceback" not in broken.stderr, "нечитаемый прогон уронил скрипт трейсбеком")
+
+        # 11. Сводка для Telegram: пункт на товар, строка на изменение, ссылка внутри.
+        tg = diff(str(prev), str(curr), "--format", "telegram")
+        check(tg.returncode == 0, f"сводка упала: {tg.stderr.strip()[:200]}")
+        tg_lines = tg.stdout.splitlines()
+        bullets = [l.strip() for l in tg_lines if l.strip().startswith("• ")]
+        headers = [l for l in tg_lines if l and l[0].isdigit() and ". " in l[:4]]
+
+        expected_changes = sum(len(item["lines"]) for item in result["changes"])
+        check(len(bullets) == expected_changes,
+              f"строк в сводке {len(bullets)}, изменений {expected_changes}")
+        check(len(headers) == len(result["changes"]),
+              f"пунктов {len(headers)}, товаров с изменениями {len(result['changes'])}")
+        check(f"Изменения цен {result['curr_date']}" in tg.stdout,
+              "в заголовке сводки нет даты текущего прогона")
+
+        # Товар — заголовок пункта, а не приписка к каждой строке.
+        titled = [h for h in headers if "Насос Джилекс Водомет 55/50" in h]
+        check(len(titled) == 1, f"товар с названием дал {len(titled)} заголовков, нужен один")
+        check(not any("Насос Джилекс" in b for b in bullets),
+              "название товара повторяется в строках изменений — группировка не сработала")
+
+        # У каждого пункта есть ссылка, по которой можно перейти.
+        for item in result["changes"]:
+            check(item["url"] in tg.stdout, f"в сводке нет ссылки на {item['url']}")
+
+        # Названия нет — заголовком идёт ссылка, и второй раз она не печатается.
+        check(any(h.endswith("u/sale-gone") for h in headers),
+              "товар без названия не стал заголовком со ссылкой")
+        check(tg.stdout.count("u/sale-gone") == 1,
+              "у безымянного товара ссылка напечатана дважды")
+
+        # Суть изменения не потерялась при перегруппировке.
+        price_line = [b for b in bullets if "360.00" in b]
+        check(len(price_line) == 1 and "+20.0%" in price_line[0],
+              f"в строке изменения нет было/стало/процента: {price_line!r}")
+        check(price_line and price_line[0].startswith("• цена:"),
+              f"строка изменения не начинается со строчной буквы: {price_line!r}")
+
+        # Итоговая строка — общая с текстовым форматом, цифры не расходятся.
+        text_tail = [l for l in diff(str(prev), str(curr)).stdout.splitlines()
+                     if l.startswith("Итого:")]
+        tg_tail = [l for l in tg_lines if l.startswith("Итого:")]
+        check(tg_tail == text_tail,
+              f"итоговые строки разъехались: {tg_tail} против {text_tail}")
+
+        # Сводка — обычный текст: без разметки её не испортит отправка как есть.
+        check("<a href" not in tg.stdout and "](" not in tg.stdout,
+              "в сводку просочилась разметка — она уйдёт в Telegram сырыми тегами")
+
+        # 12. Значимого нет — сообщение всё равно уходит, с датой и счётчиком.
+        quiet_prev = run_file(tmp, "quiet_prev.json", "2026-08-21", [row("u/noise", regular=100.00)])
+        quiet_curr = run_file(tmp, "quiet_curr.json", "2026-08-22", [row("u/noise", regular=100.03)])
+        quiet = diff(str(quiet_prev), str(quiet_curr), "--format", "telegram")
+        check("Значимых изменений цен на 2026-08-22 нет." in quiet.stdout,
+              f"нет точной формулировки про отсутствие изменений: {quiet.stdout!r}")
+        check("отброшено незначимых: 1" in quiet.stdout,
+              f"в пустой сводке нет счётчика отброшенных: {quiet.stdout!r}")
+        check(quiet.stdout.strip(), "пустой прогон дал пустое сообщение — бот промолчит")
+
+        # 13. Первый прогон — одна строка, считать нечего.
+        first_tg = diff(str(curr), "--format", "telegram").stdout
+        check("Первый прогон 2026-08-22" in first_tg,
+              f"первый прогон не объявлен в сводке: {first_tg!r}")
+        check("Итого:" not in first_tg, "у первого прогона появилась итоговая строка")
 
     for line in failures:
         print(f"FAIL {line}")

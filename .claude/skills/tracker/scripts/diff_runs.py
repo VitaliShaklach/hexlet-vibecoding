@@ -11,6 +11,7 @@ has_credit. Пороги и формулировки — из KNOWLEDGE.md ря�
     python3 diff_runs.py prev.json curr.json --format json   # то же машинно
     python3 diff_runs.py --curr curr.json                    # прошлого нет: первый прогон
     python3 diff_runs.py prev.json curr.json --all           # + отброшенные незначимые
+    python3 diff_runs.py prev.json curr.json --format telegram | python3 send.py -
 
 Коды возврата: 0 — сравнение прошло (значимые изменения могли найтись и нет),
 2 — файл прогона не читается.
@@ -173,6 +174,51 @@ def diff_runs(prev: dict | None, curr: dict) -> dict:
     return result
 
 
+def summary_line(result: dict) -> str:
+    """Итоговая строка сводки — одна на оба формата, чтобы цифры не разъезжались.
+
+    Счётчик отброшенных обязателен даже когда изменений нет: пустая сводка без
+    этой цифры неотличима от сломавшегося сравнения (KNOWLEDGE.md).
+    """
+    skipped_count = sum(len(item["lines"]) for item in result["skipped"])
+    return (
+        f"Итого: товаров с изменениями {len(result['changes'])} из {result['watched']} · "
+        f"отброшено незначимых: {skipped_count} · "
+        f"нет данных: {len(result['no_data'])}"
+    )
+
+
+def to_telegram(result: dict) -> str:
+    """Короткая сводка для уведомления: пункт на товар, строка на изменение.
+
+    Отличается от to_text не данными, а плотностью: в телефон уходит не разбор
+    прогона, а ответ на вопрос «что поменялось». Товар не повторяется в каждой
+    строке — он заголовок пункта, под ним ссылка, чтобы перейти в магазин одним
+    касанием, и дальше сами изменения.
+    """
+    date = result["curr_date"]
+
+    if result["first_run"]:
+        return f"Первый прогон {date}, сравнивать не с чем."
+
+    if not result["changes"]:
+        return f"Значимых изменений цен на {date} нет.\n{summary_line(result)}"
+
+    out = [f"Изменения цен {date}", ""]
+    for index, item in enumerate(result["changes"], 1):
+        title = item.get("title")
+        # Названия нет (старый файл прогона) — заголовком идёт сама ссылка,
+        # и повторять её строкой ниже незачем.
+        out.append(f"{index}. {title or item['url']}")
+        if title:
+            out.append(f"   {item['url']}")
+        # Строчная буква после маркера: «• цена: …» вместо «• Цена: …».
+        out += [f"   • {line[:1].lower()}{line[1:]}" for line in item["lines"]]
+        out.append("")
+    out.append(summary_line(result))
+    return "\n".join(out)
+
+
 def to_text(result: dict, show_all: bool = False) -> str:
     if result["first_run"]:
         return "Первый прогон, сравнивать не с чем.\n"
@@ -190,12 +236,7 @@ def to_text(result: dict, show_all: bool = False) -> str:
     else:
         out += ["Значимых изменений нет.", ""]
 
-    skipped_count = sum(len(i["lines"]) for i in result["skipped"])
-    out.append(
-        f"Итого: товаров с изменениями {len(result['changes'])} из {result['watched']} · "
-        f"отброшено незначимых: {skipped_count} · "
-        f"нет данных: {len(result['no_data'])}"
-    )
+    out.append(summary_line(result))
 
     if show_all and result["skipped"]:
         out += ["", "Отброшено как незначимое (≤ 5 %):"]
@@ -224,7 +265,9 @@ def main(argv=None) -> int:
                              "один файл — текущий, прошлого ещё нет")
     parser.add_argument("--curr", help="текущий прогон явно (равнозначно одному "
                                        "позиционному файлу)")
-    parser.add_argument("--format", choices=("text", "json"), default="text")
+    parser.add_argument("--format", choices=("text", "json", "telegram"), default="text",
+                        help="text — разбор для человека, json — машинно, "
+                             "telegram — короткая сводка для отправки через send.py")
     parser.add_argument("--all", action="store_true",
                         help="показать и отброшенные незначимые изменения")
     args = parser.parse_args(argv)
@@ -252,6 +295,8 @@ def main(argv=None) -> int:
 
     if args.format == "json":
         sys.stdout.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+    elif args.format == "telegram":
+        sys.stdout.write(to_telegram(result) + "\n")
     else:
         sys.stdout.write(to_text(result, show_all=args.all))
     return 0

@@ -1,11 +1,11 @@
 ---
-name: telegram-summary
+name: tg-summary
 description: "Оформляет готовый разбор значимых изменений цен в сообщение для Telegram. Вызывается скиллом tracker на шаге 8 — на вход идёт вывод diff_runs.py --format telegram, на выход готовый текст для send.py. Только оформление: считать, сравнивать и отбирать значимое — не его работа, это уже сделано до него."
 model: haiku
 tools: Read
 ---
 
-# telegram-summary
+# tg-summary
 
 Ты оформляешь одно сообщение для Telegram. Больше ничего.
 

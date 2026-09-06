@@ -305,3 +305,108 @@ describe('рекомендации по физической активност�
     assert.equal(await visible('advice'), true, 'после исправления карточка должна вернуться');
   });
 });
+
+describe('рекомендации при заболеваниях', () => {
+  /** Пункты одного из трёх списков карточки. */
+  async function items(listId) {
+    return page.$$eval(`#${listId} li`, (nodes) => nodes.map((node) => node.textContent));
+  }
+
+  async function chooseCondition(value) {
+    await page.selectOption('#condition', value);
+  }
+
+  test('в списке пятнадцать заболеваний плюс пункт «не указывать»', async () => {
+    const values = await page.$$eval('#condition option', (nodes) => nodes.map((n) => n.value));
+
+    assert.equal(values[0], 'none', 'первым идёт пункт «не указывать»');
+    assert.equal(values.length - 1, 15);
+    assert.equal(new Set(values).size, values.length, 'значения не должны повторяться');
+  });
+
+  test('заболевания, названные заказчиком, присутствуют', async () => {
+    const labels = await page.$$eval('#condition option', (nodes) => nodes.map((n) => n.textContent));
+    const joined = labels.join(' | ');
+
+    for (const required of ['Тромбофлебит', 'Варикозное расширение вен', 'инфаркт']) {
+      assert.ok(joined.includes(required), `в списке нет пункта «${required}»`);
+    }
+  });
+
+  test('без выбранного диагноза карточки нет', async () => {
+    await fill({ sex: 'female', age: 30, height: 170, weight: 65, activity: 1.55, goal: 'keep' });
+    await chooseCondition('none');
+
+    assert.equal(await visible('condition-card'), false);
+  });
+
+  test('выбор диагноза показывает все три списка', async () => {
+    await chooseCondition('varicose');
+
+    assert.equal(await visible('condition-card'), true);
+    assert.equal(await page.textContent('#condition-name'), 'Варикозное расширение вен');
+
+    for (const list of ['condition-diet', 'condition-activity', 'condition-caution']) {
+      assert.ok((await items(list)).length > 0, `список ${list} пуст`);
+    }
+  });
+
+  test('смена диагноза полностью заменяет содержимое', async () => {
+    await chooseCondition('varicose');
+    const varicose = await items('condition-diet');
+
+    await chooseCondition('aneurysm');
+    const aneurysm = await items('condition-diet');
+
+    assert.equal(await page.textContent('#condition-name'), 'Аневризма аорты');
+    assert.notDeepEqual(aneurysm, varicose);
+    // Старые пункты не должны остаться в списке.
+    assert.equal(aneurysm.some((text) => varicose.includes(text)), false);
+  });
+
+  test('у каждого из пятнадцати диагнозов заполнены все три списка', async () => {
+    const values = await page.$$eval('#condition option', (nodes) =>
+      nodes.map((n) => n.value).filter((value) => value !== 'none'));
+
+    for (const value of values) {
+      await chooseCondition(value);
+
+      assert.ok((await page.textContent('#condition-name')).trim().length > 0, `${value}: нет названия`);
+      assert.ok((await items('condition-diet')).length > 0, `${value}: пустое питание`);
+      assert.ok((await items('condition-activity')).length > 0, `${value}: пустая активность`);
+      assert.ok((await items('condition-caution')).length > 0, `${value}: нет предостережений`);
+    }
+  });
+
+  test('при тромбофлебите есть предупреждение про варфарин и витамин K', async () => {
+    await chooseCondition('thrombophlebitis');
+    const caution = (await items('condition-caution')).join(' ');
+
+    // Совет «ешьте больше зелени» без этой оговорки опасен для тех, кто на варфарине.
+    assert.match(caution, /варфарин/i);
+    assert.match(caution, /витамин K/i);
+  });
+
+  test('карточка скрывается при ошибке ввода и возвращается после исправления', async () => {
+    await fill({ sex: 'female', age: 30, height: 170, weight: 65, activity: 1.55, goal: 'keep' });
+    await chooseCondition('infarction');
+    assert.equal(await visible('condition-card'), true);
+
+    await page.fill('#weight', '');
+    assert.equal(await visible('condition-card'), false);
+
+    await page.fill('#weight', '65');
+    assert.equal(await visible('condition-card'), true);
+  });
+
+  test('диагноз не влияет на расчёт калорий', async () => {
+    await fill({ sex: 'female', age: 30, height: 170, weight: 65, activity: 1.55, goal: 'keep' });
+    await chooseCondition('none');
+    const before = await num('target');
+
+    await chooseCondition('heart_failure');
+    assert.equal(await num('target'), before, 'расчёт нормы на диагноз опираться не должен');
+
+    await chooseCondition('none');
+  });
+});

@@ -1,0 +1,34 @@
+name: CI
+
+# Проверки гоняются на каждый пул-реквест и на каждый пуш в main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Проверка вёрстки и тесты
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Забрать код
+        uses: actions/checkout@v4
+
+      - name: Поставить Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Установить зависимости
+        run: npm ci
+
+      - name: Проверить вёрстку
+        run: npm run lint:html
+
+      - name: Поставить Chromium для тестов
+        run: npx playwright install --with-deps chromium
+
+      - name: Прогнать тесты
+        run: npm test

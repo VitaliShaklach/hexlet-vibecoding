@@ -13,6 +13,9 @@
     --line: #e2e5ea;
     --accent: #2f6f4e;
     --accent-soft: #e8f2ec;
+    --ok: #2f6f4e;
+    --warn: #8a5a00;
+    --alert: #b3261e;
     --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .06);
   }
 
@@ -25,6 +28,9 @@
       --line: #2c3038;
       --accent: #74c39b;
       --accent-soft: #22322b;
+      --ok: #74c39b;
+      --warn: #e0a95c;
+      --alert: #f2938c;
       --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
     }
   }
@@ -143,10 +149,43 @@
     font-weight: 600;
   }
 
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 22px;
+  }
+
+  button {
+    padding: 12px 22px;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 9px;
+    cursor: pointer;
+  }
+
+  button:hover { filter: brightness(1.08); }
+
+  button:focus-visible {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    button { color: #10231a; }
+  }
+
   .hint {
     font-size: 13px;
     color: var(--muted);
-    margin-top: 4px;
+    margin: 0;
+    flex: 1;
+    min-width: 200px;
   }
 
   .error {
@@ -217,6 +256,33 @@
   .macro .n { font-size: 13px; color: var(--muted); margin-top: 2px; }
   .macro .kcal { font-size: 12px; color: var(--muted); margin-top: 4px; }
 
+  .bmi {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 22px;
+    padding: 16px 18px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+
+  .bmi-value {
+    font-size: 30px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em;
+    line-height: 1;
+    min-width: 68px;
+  }
+
+  .bmi-label { font-size: 13px; color: var(--muted); }
+  .bmi-category { font-size: 15px; font-weight: 600; margin-top: 2px; }
+
+  .bmi-value[data-level="ok"], .bmi-category[data-level="ok"] { color: var(--ok); }
+  .bmi-value[data-level="warn"], .bmi-category[data-level="warn"] { color: var(--warn); }
+  .bmi-value[data-level="alert"], .bmi-category[data-level="alert"] { color: var(--alert); }
+
   footer {
     margin-top: 24px;
     font-size: 13px;
@@ -286,10 +352,13 @@
       </div>
 
     </div>
-    <p class="hint">Результат пересчитывается сразу при изменении любого поля.</p>
+    <div class="actions">
+      <button type="submit">Рассчитать</button>
+      <p class="hint">Результат пересчитывается сразу при изменении любого поля.</p>
+    </div>
   </form>
 
-  <div class="card" id="result" hidden>
+  <div class="card" id="result" tabindex="-1" hidden>
     <div class="total">
       <div class="value" id="target">—</div>
       <div class="caption" id="target-caption">ккал в день</div>
@@ -327,12 +396,23 @@
         <div class="kcal" id="carbs-kcal"></div>
       </div>
     </div>
+
+    <div class="bmi">
+      <div class="bmi-value" id="bmi-value">—</div>
+      <div class="bmi-info">
+        <div class="bmi-label">Индекс массы тела</div>
+        <div class="bmi-category" id="bmi-category">—</div>
+      </div>
+    </div>
   </div>
 
-  <div class="card error" id="error" hidden></div>
+  <div class="card error" id="error" role="alert" tabindex="-1" hidden></div>
 
   <footer>
     <p>Белки — по весу тела (1,6–2,0 г/кг в зависимости от цели), жиры — 25% калорийности, углеводы — остаток.</p>
+    <p>ИМТ — вес в килограммах, делённый на квадрат роста в метрах; категории по классификации
+       ВОЗ. Показатель не различает мышцы и жир, поэтому у людей с большой мышечной массой
+       завышен.</p>
     <p>Расчёт носит справочный характер и не заменяет консультацию врача или диетолога.</p>
   </footer>
 
@@ -352,6 +432,17 @@ var GOALS = {
 var KCAL_PER_G = { protein: 4, fat: 9, carbs: 4 };
 var FAT_SHARE = 0.25; // доля калорий из жиров
 
+// Классификация ВОЗ. Границы заданы нижним порогом включительно,
+// перебор идёт сверху вниз — первая подошедшая категория и есть ответ.
+var BMI_CATEGORIES = [
+  { from: 40, level: 'alert', name: 'Ожирение III степени' },
+  { from: 35, level: 'alert', name: 'Ожирение II степени' },
+  { from: 30, level: 'alert', name: 'Ожирение I степени' },
+  { from: 25, level: 'warn', name: 'Избыточный вес' },
+  { from: 18.5, level: 'ok', name: 'Нормальный вес' },
+  { from: 0, level: 'warn', name: 'Недостаточный вес' }
+];
+
 var LIMITS = {
   age: { min: 14, max: 100, name: 'Возраст', unit: 'лет' },
   height: { min: 120, max: 230, name: 'Рост', unit: 'см' },
@@ -362,6 +453,19 @@ var LIMITS = {
 function basalMetabolicRate(sex, weight, height, age) {
   var base = 10 * weight + 6.25 * height - 5 * age;
   return sex === 'male' ? base + 5 : base - 161;
+}
+
+// Индекс массы тела: вес в килограммах, делённый на квадрат роста в метрах.
+function bodyMassIndex(weight, heightCm) {
+  var heightM = heightCm / 100;
+  return weight / (heightM * heightM);
+}
+
+function bmiCategory(bmi) {
+  for (var i = 0; i < BMI_CATEGORIES.length; i += 1) {
+    if (bmi >= BMI_CATEGORIES[i].from) return BMI_CATEGORIES[i];
+  }
+  return BMI_CATEGORIES[BMI_CATEGORIES.length - 1];
 }
 
 function macros(calories, weight, proteinPerKg) {
@@ -448,12 +552,27 @@ function calculate() {
     setText(name, round(parts[name]) + ' г');
     setText(name + '-kcal', round(parts[name] * KCAL_PER_G[name]) + ' ккал');
   });
+
+  var bmi = bodyMassIndex(weight.value, height.value);
+  var category = bmiCategory(bmi);
+  var bmiValue = document.getElementById('bmi-value');
+  var bmiCategoryEl = document.getElementById('bmi-category');
+
+  bmiValue.textContent = bmi.toFixed(1).replace('.', ',');
+  bmiValue.setAttribute('data-level', category.level);
+  bmiCategoryEl.textContent = category.name;
+  bmiCategoryEl.setAttribute('data-level', category.level);
 }
 
 document.getElementById('form').addEventListener('input', calculate);
 document.getElementById('form').addEventListener('submit', function (event) {
   event.preventDefault();
   calculate();
+  // Расчёт и так живой, но по явному нажатию уводим фокус к ответу,
+  // иначе пользователь с клавиатуры не узнает, что результат обновился.
+  var target = document.getElementById('result');
+  if (target.hidden) target = document.getElementById('error');
+  target.focus();
 });
 
 calculate();

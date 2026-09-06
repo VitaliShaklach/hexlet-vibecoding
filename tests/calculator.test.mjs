@@ -217,3 +217,91 @@ describe('индекс массы тела', () => {
     assert.equal(await bmi(), before, 'ИМТ считается только по росту и весу');
   });
 });
+
+describe('рекомендации по физической активности', () => {
+  /** Возвращает пары «занятие — расход в ккал» из таблицы. */
+  async function burnRows() {
+    return page.$$eval('#burn-list .burn-row', (rows) =>
+      rows.map((row) => ({
+        name: row.querySelector('.burn-name').textContent,
+        kcal: Number(row.querySelector('.burn-kcal').textContent.replace(/[^\d]/g, '')),
+      })));
+  }
+
+  test('расход считается по MET-формуле', async () => {
+    await fill({ sex: 'female', age: 30, height: 170, weight: 65, activity: 1.55, goal: 'keep' });
+    const rows = await burnRows();
+
+    // Ходьба быстрым шагом, MET 5.0: 5 * 3.5 * 65 / 200 * 30 = 170.6
+    const walk = rows.find((row) => row.name.startsWith('Ходьба быстрым шагом'));
+    assert.equal(walk.kcal, 171);
+
+    // Бег 8 км/ч, MET 8.3: 8.3 * 3.5 * 65 / 200 * 30 = 283.2
+    const run = rows.find((row) => row.name.startsWith('Бег'));
+    assert.equal(run.kcal, 283);
+  });
+
+  test('расход пропорционален весу', async () => {
+    await fill({ sex: 'female', age: 30, height: 170, weight: 65, activity: 1.55, goal: 'keep' });
+    const light = (await burnRows()).map((row) => row.kcal);
+
+    await page.fill('#weight', '130');
+    const heavy = (await burnRows()).map((row) => row.kcal);
+
+    heavy.forEach((kcal, i) => {
+      assert.ok(Math.abs(kcal - light[i] * 2) <= 1, `${kcal} вместо удвоенного ${light[i]}`);
+    });
+  });
+
+  test('таблица содержит десять занятий по возрастанию расхода', async () => {
+    await fill({ sex: 'female', age: 30, height: 170, weight: 65, activity: 1.55, goal: 'keep' });
+    const rows = await burnRows();
+
+    assert.equal(rows.length, 10);
+    const sorted = [...rows].sort((a, b) => a.kcal - b.kcal).map((row) => row.name);
+    assert.deepEqual(rows.map((row) => row.name), sorted);
+  });
+
+  test('подсказка своя у каждого уровня активности', async () => {
+    const seen = new Set();
+
+    for (const level of ['1.2', '1.375', '1.55', '1.725', '1.9']) {
+      await page.selectOption('#activity', level);
+      const hint = await page.textContent('#activity-hint');
+
+      assert.ok(hint.trim().length > 0, `пустая подсказка для уровня ${level}`);
+      assert.ok(!seen.has(hint), `подсказка для уровня ${level} повторяет предыдущую`);
+      seen.add(hint);
+    }
+  });
+
+  test('рекомендация своя у каждой цели', async () => {
+    const seen = new Set();
+
+    for (const goal of ['lose', 'keep', 'gain']) {
+      await page.selectOption('#goal', goal);
+      const advice = await page.textContent('#goal-advice');
+
+      assert.ok(advice.trim().length > 0, `пустая рекомендация для цели ${goal}`);
+      assert.ok(!seen.has(advice), `рекомендация для цели ${goal} повторяет предыдущую`);
+      seen.add(advice);
+    }
+  });
+
+  test('вес в заголовке совпадает с введённым', async () => {
+    await fill({ sex: 'female', age: 30, height: 170, weight: 82, activity: 1.55, goal: 'keep' });
+    assert.equal(await page.textContent('#burn-weight'), '82 кг');
+  });
+
+  test('при ошибке ввода карточка скрывается вместе с результатом', async () => {
+    await fill({ sex: 'female', age: 30, height: 170, weight: 65, activity: 1.55, goal: 'keep' });
+    assert.equal(await visible('advice'), true);
+
+    await page.fill('#weight', '');
+    assert.equal(await visible('advice'), false, 'иначе останутся числа от прошлого веса');
+    assert.equal(await visible('result'), false);
+
+    await page.fill('#weight', '65');
+    assert.equal(await visible('advice'), true, 'после исправления карточка должна вернуться');
+  });
+});

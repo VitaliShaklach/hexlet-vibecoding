@@ -283,6 +283,55 @@
   .bmi-value[data-level="warn"], .bmi-category[data-level="warn"] { color: var(--warn); }
   .bmi-value[data-level="alert"], .bmi-category[data-level="alert"] { color: var(--alert); }
 
+  .card-title {
+    font-size: 19px;
+    letter-spacing: -.01em;
+    margin: 0 0 14px;
+  }
+
+  .advice-text {
+    margin: 0 0 12px;
+    font-size: 15px;
+  }
+
+  .burn-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    margin: 22px 0 8px;
+  }
+
+  .burn {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .burn-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .burn-name { font-size: 15px; }
+
+  .burn-kcal {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: var(--accent);
+  }
+
+  .advice-note {
+    margin: 16px 0 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
   footer {
     margin-top: 24px;
     font-size: 13px;
@@ -406,6 +455,19 @@
     </div>
   </div>
 
+  <div class="card" id="advice" hidden>
+    <h2 class="card-title">Физическая активность</h2>
+
+    <p class="advice-text" id="activity-hint"></p>
+    <p class="advice-text" id="goal-advice"></p>
+
+    <h3 class="burn-title">Сколько сжигают 30 минут при весе <span id="burn-weight"></span></h3>
+    <ul class="burn" id="burn-list"></ul>
+
+    <p class="advice-note">Цифры справочные. Расход от тренировок уже заложен в коэффициент
+       активности выше, поэтому отдельно вычитать его из суточной нормы не нужно.</p>
+  </div>
+
   <div class="card error" id="error" role="alert" tabindex="-1" hidden></div>
 
   <footer>
@@ -413,6 +475,9 @@
     <p>ИМТ — вес в килограммах, делённый на квадрат роста в метрах; категории по классификации
        ВОЗ. Показатель не различает мышцы и жир, поэтому у людей с большой мышечной массой
        завышен.</p>
+    <p>Расход при нагрузке — по MET-значениям из Compendium of Physical Activities:
+       ккал = MET × 3,5 × вес в кг ÷ 200 × минуты. Реальные траты зависят от темпа
+       и подготовки.</p>
     <p>Расчёт носит справочный характер и не заменяет консультацию врача или диетолога.</p>
   </footer>
 
@@ -424,10 +489,55 @@
 // Множители активности берём прямо из value в select, а остальные
 // коэффициенты формулы держим здесь.
 var GOALS = {
-  lose: { factor: 0.80, protein: 2.0, label: 'дефицит 20% — снижение веса' },
-  keep: { factor: 1.00, protein: 1.6, label: 'поддержание текущего веса' },
-  gain: { factor: 1.15, protein: 1.8, label: 'профицит 15% — набор массы' }
+  lose: {
+    factor: 0.80,
+    protein: 2.0,
+    label: 'дефицит 20% — снижение веса',
+    advice: 'Результат даёт дефицит калорий, движение его ускоряет. Держите 150–300 минут ' +
+            'умеренной активности в неделю и добавьте две силовые тренировки: при похудении ' +
+            'они защищают мышцы, иначе вес уходит частично за их счёт.'
+  },
+  keep: {
+    factor: 1.00,
+    protein: 1.6,
+    label: 'поддержание текущего веса',
+    advice: 'ВОЗ рекомендует 150–300 минут умеренной активности в неделю плюс две силовые ' +
+            'тренировки. Это примерно полчаса движения пять дней в неделю — быстрая ходьба ' +
+            'тоже считается.'
+  },
+  gain: {
+    factor: 1.15,
+    protein: 1.8,
+    label: 'профицит 15% — набор массы',
+    advice: 'Основа набора — профицит калорий и силовые тренировки три-четыре раза в неделю. ' +
+            'Кардио оставьте умеренным: чем его больше, тем сильнее оно съедает профицит.'
+  }
 };
+
+// Расшифровки уровней активности. Ключ совпадает со значением option в поле #activity.
+var ACTIVITY_HINTS = {
+  '1.2': 'Сидячая работа, поездки на транспорте, отдельных тренировок нет.',
+  '1.375': 'Лёгкие тренировки один-три раза в неделю или ежедневная ходьба по 20–30 минут.',
+  '1.55': 'Тренировки три-пять раз в неделю по 45–60 минут либо работа на ногах.',
+  '1.725': 'Интенсивные тренировки шесть-семь раз в неделю.',
+  '1.9': 'Тяжёлый физический труд или две тренировки в день.'
+};
+
+// Значения MET по Compendium of Physical Activities, по возрастанию нагрузки.
+var ACTIVITIES = [
+  { name: 'Йога, растяжка', met: 2.5 },
+  { name: 'Ходьба спокойным шагом, 4 км/ч', met: 3.0 },
+  { name: 'Уборка, работа по дому', met: 3.3 },
+  { name: 'Силовая тренировка', met: 3.5 },
+  { name: 'Ходьба быстрым шагом, 6 км/ч', met: 5.0 },
+  { name: 'Танцы', met: 5.0 },
+  { name: 'Плавание в спокойном темпе', met: 5.8 },
+  { name: 'Велосипед, 16–19 км/ч', met: 6.8 },
+  { name: 'Подъём по лестнице', met: 8.0 },
+  { name: 'Бег, 8 км/ч', met: 8.3 }
+];
+
+var BURN_MINUTES = 30;
 
 var KCAL_PER_G = { protein: 4, fat: 9, carbs: 4 };
 var FAT_SHARE = 0.25; // доля калорий из жиров
@@ -466,6 +576,33 @@ function bmiCategory(bmi) {
     if (bmi >= BMI_CATEGORIES[i].from) return BMI_CATEGORIES[i];
   }
   return BMI_CATEGORIES[BMI_CATEGORIES.length - 1];
+}
+
+// Расход по MET-формуле: MET x 3.5 x вес / 200 — это килокалории в минуту.
+function activityBurn(met, weight, minutes) {
+  return met * 3.5 * weight / 200 * minutes;
+}
+
+function renderActivities(weight) {
+  var list = document.getElementById('burn-list');
+  list.textContent = '';
+
+  ACTIVITIES.forEach(function (activity) {
+    var row = document.createElement('li');
+    row.className = 'burn-row';
+
+    var name = document.createElement('span');
+    name.className = 'burn-name';
+    name.textContent = activity.name;
+
+    var kcal = document.createElement('span');
+    kcal.className = 'burn-kcal';
+    kcal.textContent = round(activityBurn(activity.met, weight, BURN_MINUTES)) + ' ккал';
+
+    row.appendChild(name);
+    row.appendChild(kcal);
+    list.appendChild(row);
+  });
 }
 
 function macros(calories, weight, proteinPerKg) {
@@ -510,8 +647,14 @@ function setText(id, text) {
   document.getElementById(id).textContent = text;
 }
 
+// Результат и советы показываются и прячутся вместе — иначе при ошибке ввода
+// таблица расхода осталась бы висеть с числами от прошлого веса.
+function showResults(visible) {
+  document.getElementById('result').hidden = !visible;
+  document.getElementById('advice').hidden = !visible;
+}
+
 function calculate() {
-  var result = document.getElementById('result');
   var errorBox = document.getElementById('error');
 
   var age = readNumber('age');
@@ -521,14 +664,14 @@ function calculate() {
                                      .filter(Boolean)[0];
 
   if (problem) {
-    result.hidden = true;
+    showResults(false);
     errorBox.hidden = false;
     errorBox.textContent = problem;
     return;
   }
 
   errorBox.hidden = true;
-  result.hidden = false;
+  showResults(true);
 
   var sex = document.querySelector('input[name="sex"]:checked').value;
   var activity = Number(document.getElementById('activity').value);
@@ -552,6 +695,12 @@ function calculate() {
     setText(name, round(parts[name]) + ' г');
     setText(name + '-kcal', round(parts[name] * KCAL_PER_G[name]) + ' ккал');
   });
+
+  var activityField = document.getElementById('activity');
+  setText('activity-hint', ACTIVITY_HINTS[activityField.value]);
+  setText('goal-advice', goal.advice);
+  setText('burn-weight', round(weight.value) + ' кг');
+  renderActivities(weight.value);
 
   var bmi = bodyMassIndex(weight.value, height.value);
   var category = bmiCategory(bmi);

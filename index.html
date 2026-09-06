@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Калькулятор калорий</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #1a1c1f;
+    --muted: #6b7280;
+    --line: #e2e5ea;
+    --accent: #2f6f4e;
+    --accent-soft: #e8f2ec;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .06);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --card: #1d2026;
+      --text: #e8eaed;
+      --muted: #9aa1ab;
+      --line: #2c3038;
+      --accent: #74c39b;
+      --accent-soft: #22322b;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 32px 16px 64px;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 28px;
+    line-height: 1.2;
+    margin: 0 0 6px;
+    letter-spacing: -.02em;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    margin: 0 0 28px;
+    font-size: 15px;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: var(--shadow);
+  }
+
+  .card + .card { margin-top: 20px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+  }
+
+  .field { display: flex; flex-direction: column; gap: 7px; }
+  .field.wide { grid-column: 1 / -1; }
+
+  label, .label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: .01em;
+  }
+
+  input[type="number"], select {
+    width: 100%;
+    padding: 11px 12px;
+    font: inherit;
+    font-size: 15px;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    appearance: none;
+  }
+
+  input[type="number"]:focus, select:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  input:invalid { border-color: #d9534f; }
+
+  /* Переключатель пола: две радиокнопки, стилизованные под сегменты */
+  .seg { display: flex; gap: 8px; }
+
+  .seg input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .seg label {
+    flex: 1;
+    text-align: center;
+    padding: 11px 8px;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .seg input:focus-visible + label {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .seg input:checked + label {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .hint {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  .error {
+    margin-top: 18px;
+    padding: 12px 14px;
+    border-radius: 9px;
+    background: var(--accent-soft);
+    color: var(--text);
+    font-size: 14px;
+  }
+
+  .total {
+    text-align: center;
+    padding: 8px 0 20px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .total .value {
+    font-size: 46px;
+    font-weight: 700;
+    letter-spacing: -.03em;
+    color: var(--accent);
+    line-height: 1.1;
+  }
+
+  .total .caption {
+    font-size: 14px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  .rows { margin-top: 20px; }
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    padding: 9px 0;
+  }
+
+  .row + .row { border-top: 1px solid var(--line); }
+  .row .name { color: var(--muted); font-size: 14px; }
+  .row .num { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  .macros {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 22px;
+  }
+
+  .macro {
+    text-align: center;
+    padding: 14px 8px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+
+  .macro .g {
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em;
+  }
+
+  .macro .n { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .macro .kcal { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  footer {
+    margin-top: 24px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  footer p { margin: 0 0 8px; }
+
+  @media (max-width: 560px) {
+    .grid { grid-template-columns: 1fr; }
+    .total .value { font-size: 38px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Калькулятор калорий</h1>
+  <p class="subtitle">Суточная норма и баланс БЖУ по формуле Миффлина — Сан Жеора.</p>
+
+  <form class="card" id="form" novalidate>
+    <div class="grid">
+
+      <div class="field wide">
+        <span class="label">Пол</span>
+        <div class="seg">
+          <input type="radio" id="sex-f" name="sex" value="female" checked>
+          <label for="sex-f">Женский</label>
+          <input type="radio" id="sex-m" name="sex" value="male">
+          <label for="sex-m">Мужской</label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="age">Возраст, лет</label>
+        <input type="number" id="age" value="30" min="14" max="100" step="1" required>
+      </div>
+
+      <div class="field">
+        <label for="height">Рост, см</label>
+        <input type="number" id="height" value="170" min="120" max="230" step="1" required>
+      </div>
+
+      <div class="field">
+        <label for="weight">Вес, кг</label>
+        <input type="number" id="weight" value="65" min="30" max="300" step="0.1" required>
+      </div>
+
+      <div class="field">
+        <label for="activity">Физическая активность</label>
+        <select id="activity">
+          <option value="1.2">Минимальная — сидячая работа</option>
+          <option value="1.375">Низкая — 1–3 тренировки в неделю</option>
+          <option value="1.55" selected>Средняя — 3–5 тренировок в неделю</option>
+          <option value="1.725">Высокая — 6–7 тренировок в неделю</option>
+          <option value="1.9">Очень высокая — физический труд</option>
+        </select>
+      </div>
+
+      <div class="field wide">
+        <label for="goal">Цель</label>
+        <select id="goal">
+          <option value="lose">Снизить вес — дефицит 20%</option>
+          <option value="keep" selected>Удержать вес</option>
+          <option value="gain">Набрать массу — профицит 15%</option>
+        </select>
+      </div>
+
+    </div>
+    <p class="hint">Результат пересчитывается сразу при изменении любого поля.</p>
+  </form>
+
+  <div class="card" id="result" hidden>
+    <div class="total">
+      <div class="value" id="target">—</div>
+      <div class="caption" id="target-caption">ккал в день</div>
+    </div>
+
+    <div class="rows">
+      <div class="row">
+        <span class="name">Базовый обмен (BMR) — расход в покое</span>
+        <span class="num" id="bmr">—</span>
+      </div>
+      <div class="row">
+        <span class="name">Расход с учётом активности (TDEE)</span>
+        <span class="num" id="tdee">—</span>
+      </div>
+      <div class="row">
+        <span class="name">Поправка на цель</span>
+        <span class="num" id="delta">—</span>
+      </div>
+    </div>
+
+    <div class="macros">
+      <div class="macro">
+        <div class="g" id="protein">—</div>
+        <div class="n">Белки</div>
+        <div class="kcal" id="protein-kcal"></div>
+      </div>
+      <div class="macro">
+        <div class="g" id="fat">—</div>
+        <div class="n">Жиры</div>
+        <div class="kcal" id="fat-kcal"></div>
+      </div>
+      <div class="macro">
+        <div class="g" id="carbs">—</div>
+        <div class="n">Углеводы</div>
+        <div class="kcal" id="carbs-kcal"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card error" id="error" hidden></div>
+
+  <footer>
+    <p>Белки — по весу тела (1,6–2,0 г/кг в зависимости от цели), жиры — 25% калорийности, углеводы — остаток.</p>
+    <p>Расчёт носит справочный характер и не заменяет консультацию врача или диетолога.</p>
+  </footer>
+
+</div>
+
+<script>
+'use strict';
+
+// Множители активности берём прямо из value в select, а остальные
+// коэффициенты формулы держим здесь.
+var GOALS = {
+  lose: { factor: 0.80, protein: 2.0, label: 'дефицит 20% — снижение веса' },
+  keep: { factor: 1.00, protein: 1.6, label: 'поддержание текущего веса' },
+  gain: { factor: 1.15, protein: 1.8, label: 'профицит 15% — набор массы' }
+};
+
+var KCAL_PER_G = { protein: 4, fat: 9, carbs: 4 };
+var FAT_SHARE = 0.25; // доля калорий из жиров
+
+var LIMITS = {
+  age: { min: 14, max: 100, name: 'Возраст', unit: 'лет' },
+  height: { min: 120, max: 230, name: 'Рост', unit: 'см' },
+  weight: { min: 30, max: 300, name: 'Вес', unit: 'кг' }
+};
+
+// Формула Миффлина — Сан Жеора.
+function basalMetabolicRate(sex, weight, height, age) {
+  var base = 10 * weight + 6.25 * height - 5 * age;
+  return sex === 'male' ? base + 5 : base - 161;
+}
+
+function macros(calories, weight, proteinPerKg) {
+  var protein = weight * proteinPerKg;
+  var fat = calories * FAT_SHARE / KCAL_PER_G.fat;
+  var left = calories - protein * KCAL_PER_G.protein - fat * KCAL_PER_G.fat;
+  // При очень низкой калорийности на углеводы может не остаться места —
+  // тогда добираем недостающее из белка, но не ниже 1,2 г/кг.
+  if (left < 0) {
+    var floor = weight * 1.2;
+    var need = -left / KCAL_PER_G.protein;
+    protein = Math.max(floor, protein - need);
+    left = calories - protein * KCAL_PER_G.protein - fat * KCAL_PER_G.fat;
+  }
+  return {
+    protein: protein,
+    fat: fat,
+    carbs: Math.max(0, left / KCAL_PER_G.carbs)
+  };
+}
+
+function readNumber(id) {
+  var raw = document.getElementById(id).value.trim();
+  if (raw === '') return { error: LIMITS[id].name + ': укажите значение.' };
+
+  var value = Number(raw);
+  var limit = LIMITS[id];
+  if (!isFinite(value) || value < limit.min || value > limit.max) {
+    return {
+      error: limit.name + ': допустимы значения от ' + limit.min +
+             ' до ' + limit.max + ' ' + limit.unit + '.'
+    };
+  }
+  return { value: value };
+}
+
+function round(value) {
+  return Math.round(value).toLocaleString('ru-RU');
+}
+
+function setText(id, text) {
+  document.getElementById(id).textContent = text;
+}
+
+function calculate() {
+  var result = document.getElementById('result');
+  var errorBox = document.getElementById('error');
+
+  var age = readNumber('age');
+  var height = readNumber('height');
+  var weight = readNumber('weight');
+  var problem = [age, height, weight].map(function (f) { return f.error; })
+                                     .filter(Boolean)[0];
+
+  if (problem) {
+    result.hidden = true;
+    errorBox.hidden = false;
+    errorBox.textContent = problem;
+    return;
+  }
+
+  errorBox.hidden = true;
+  result.hidden = false;
+
+  var sex = document.querySelector('input[name="sex"]:checked').value;
+  var activity = Number(document.getElementById('activity').value);
+  var goal = GOALS[document.getElementById('goal').value];
+
+  var bmr = basalMetabolicRate(sex, weight.value, height.value, age.value);
+  var tdee = bmr * activity;
+  var target = tdee * goal.factor;
+  var parts = macros(target, weight.value, goal.protein);
+
+  setText('target', round(target));
+  setText('target-caption', 'ккал в день — ' + goal.label);
+  setText('bmr', round(bmr) + ' ккал');
+  setText('tdee', round(tdee) + ' ккал');
+
+  var delta = Math.round(target - tdee);
+  var sign = delta === 0 ? '' : (delta > 0 ? '+' : '−');
+  setText('delta', sign + round(Math.abs(delta)) + ' ккал');
+
+  ['protein', 'fat', 'carbs'].forEach(function (name) {
+    setText(name, round(parts[name]) + ' г');
+    setText(name + '-kcal', round(parts[name] * KCAL_PER_G[name]) + ' ккал');
+  });
+}
+
+document.getElementById('form').addEventListener('input', calculate);
+document.getElementById('form').addEventListener('submit', function (event) {
+  event.preventDefault();
+  calculate();
+});
+
+calculate();
+</script>
+</body>
+</html>

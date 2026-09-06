@@ -168,3 +168,52 @@ describe('кнопка «Рассчитать»', () => {
     assert.equal(await page.evaluate(() => document.activeElement.id), 'error');
   });
 });
+
+describe('индекс массы тела', () => {
+  /** ИМТ выводится с запятой как десятичным разделителем. */
+  async function bmi() {
+    const text = await page.textContent('#bmi-value');
+    return Number(text.replace(',', '.'));
+  }
+
+  const cases = [
+    { name: 'нормальный вес', height: 170, weight: 65, expected: 22.5, category: 'Нормальный вес', level: 'ok' },
+    { name: 'недостаточный вес', height: 180, weight: 55, expected: 17.0, category: 'Недостаточный вес', level: 'warn' },
+    { name: 'избыточный вес', height: 170, weight: 78, expected: 27.0, category: 'Избыточный вес', level: 'warn' },
+    { name: 'ожирение I степени', height: 170, weight: 90, expected: 31.1, category: 'Ожирение I степени', level: 'alert' },
+    { name: 'ожирение II степени', height: 170, weight: 102, expected: 35.3, category: 'Ожирение II степени', level: 'alert' },
+    { name: 'ожирение III степени', height: 150, weight: 95, expected: 42.2, category: 'Ожирение III степени', level: 'alert' },
+  ];
+
+  for (const { name, height, weight, expected, category, level } of cases) {
+    test(`${name}: ${weight} кг при ${height} см`, async () => {
+      await fill({ sex: 'female', age: 30, height, weight, activity: 1.55, goal: 'keep' });
+
+      assert.ok(
+        Math.abs((await bmi()) - expected) < 0.1,
+        `ИМТ ${await bmi()} вместо ожидаемого ${expected}`,
+      );
+      assert.equal(await page.textContent('#bmi-category'), category);
+      assert.equal(await page.getAttribute('#bmi-category', 'data-level'), level);
+    });
+  }
+
+  test('границы категорий по классификации ВОЗ', async () => {
+    // Ровно 18.5 — уже норма, ровно 25 — уже избыточный вес.
+    await fill({ sex: 'female', age: 30, height: 200, weight: 74, activity: 1.55, goal: 'keep' });
+    assert.equal(await bmi(), 18.5);
+    assert.equal(await page.textContent('#bmi-category'), 'Нормальный вес');
+
+    await fill({ sex: 'female', age: 30, height: 200, weight: 100, activity: 1.55, goal: 'keep' });
+    assert.equal(await bmi(), 25.0);
+    assert.equal(await page.textContent('#bmi-category'), 'Избыточный вес');
+  });
+
+  test('не зависит от возраста, пола, активности и цели', async () => {
+    await fill({ sex: 'female', age: 30, height: 170, weight: 65, activity: 1.55, goal: 'keep' });
+    const before = await bmi();
+
+    await fill({ sex: 'male', age: 55, height: 170, weight: 65, activity: 1.2, goal: 'gain' });
+    assert.equal(await bmi(), before, 'ИМТ считается только по росту и весу');
+  });
+});

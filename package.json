@@ -1,0 +1,14 @@
+{
+  "name": "calorie-calculator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Калькулятор суточной нормы калорий и БЖУ",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "lint:html": "html-validate index.html"
+  },
+  "devDependencies": {
+    "html-validate": "^9.0.0",
+    "playwright": "1.56.1"
+  }
+}

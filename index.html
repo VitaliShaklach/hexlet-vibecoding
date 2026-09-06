@@ -143,10 +143,43 @@
     font-weight: 600;
   }
 
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 22px;
+  }
+
+  button {
+    padding: 12px 22px;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 9px;
+    cursor: pointer;
+  }
+
+  button:hover { filter: brightness(1.08); }
+
+  button:focus-visible {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    button { color: #10231a; }
+  }
+
   .hint {
     font-size: 13px;
     color: var(--muted);
-    margin-top: 4px;
+    margin: 0;
+    flex: 1;
+    min-width: 200px;
   }
 
   .error {
@@ -286,10 +319,13 @@
       </div>
 
     </div>
-    <p class="hint">Результат пересчитывается сразу при изменении любого поля.</p>
+    <div class="actions">
+      <button type="submit">Рассчитать</button>
+      <p class="hint">Результат пересчитывается сразу при изменении любого поля.</p>
+    </div>
   </form>
 
-  <div class="card" id="result" hidden>
+  <div class="card" id="result" tabindex="-1" hidden>
     <div class="total">
       <div class="value" id="target">—</div>
       <div class="caption" id="target-caption">ккал в день</div>
@@ -329,7 +365,7 @@
     </div>
   </div>
 
-  <div class="card error" id="error" hidden></div>
+  <div class="card error" id="error" role="alert" tabindex="-1" hidden></div>
 
   <footer>
     <p>Белки — по весу тела (1,6–2,0 г/кг в зависимости от цели), жиры — 25% калорийности, углеводы — остаток.</p>
@@ -454,6 +490,11 @@ document.getElementById('form').addEventListener('input', calculate);
 document.getElementById('form').addEventListener('submit', function (event) {
   event.preventDefault();
   calculate();
+  // Расчёт и так живой, но по явному нажатию уводим фокус к ответу,
+  // иначе пользователь с клавиатуры не узнает, что результат обновился.
+  var target = document.getElementById('result');
+  if (target.hidden) target = document.getElementById('error');
+  target.focus();
 });
 
 calculate();

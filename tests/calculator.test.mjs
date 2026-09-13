@@ -410,3 +410,45 @@ describe('рекомендации при заболеваниях', () => {
     await chooseCondition('none');
   });
 });
+
+describe('превью для мессенджеров', () => {
+  const SITE = 'https://vitalishaklach.github.io/hexlet-vibecoding/';
+  const IMAGE = `${SITE}og-preview.png`;
+
+  /** Значение мета-тега по property (Open Graph) или name (Twitter). */
+  async function meta(key) {
+    return page.getAttribute(`meta[property="${key}"], meta[name="${key}"]`, 'content');
+  }
+
+  test('заголовок, описание и картинка заданы', async () => {
+    assert.equal(await meta('og:title'), 'Калькулятор калорий — норма, БЖУ и ИМТ');
+    assert.ok((await meta('og:description')).length > 50, 'описание слишком короткое');
+    assert.equal(await meta('og:image'), IMAGE);
+  });
+
+  test('адреса абсолютные — иначе Телеграм не загрузит картинку', async () => {
+    for (const key of ['og:image', 'og:url', 'twitter:image']) {
+      assert.match(await meta(key), /^https:\/\//, `${key} должен быть полным адресом`);
+    }
+  });
+
+  test('размеры картинки объявлены как 1200×630', async () => {
+    assert.equal(await meta('og:image:width'), '1200');
+    assert.equal(await meta('og:image:height'), '630');
+  });
+
+  test('картинка лежит в проекте и совпадает с объявленными размерами', async () => {
+    const { readFileSync } = await import('node:fs');
+    const file = new URL('../og-preview.png', import.meta.url);
+    const png = readFileSync(file);
+
+    assert.equal(png.subarray(1, 4).toString(), 'PNG', 'файл не PNG');
+    // Ширина и высота лежат в заголовке IHDR: байты 16-23.
+    assert.equal(png.readUInt32BE(16), 1200);
+    assert.equal(png.readUInt32BE(20), 630);
+  });
+
+  test('карточка Twitter крупная', async () => {
+    assert.equal(await meta('twitter:card'), 'summary_large_image');
+  });
+});

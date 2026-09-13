@@ -1,6 +1,6 @@
 // Браузерные тесты калькулятора: страница открывается в Chromium,
 // значения вводятся как это делал бы человек, проверяется то, что видно на экране.
-import { test, before, after, describe } from 'node:test';
+import { test, before, after, afterEach, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 
@@ -450,5 +450,132 @@ describe('превью для мессенджеров', () => {
 
   test('карточка Twitter крупная', async () => {
     assert.equal(await meta('twitter:card'), 'summary_large_image');
+  });
+});
+
+describe('переключатель темы', () => {
+  const LIGHT_BG = 'rgb(244, 245, 247)';
+  const DARK_BG = 'rgb(20, 22, 26)';
+
+  // Тема живёт в localStorage, поэтому каждый случай получает свой контекст:
+  // иначе выбор из одного теста протёк бы в следующий.
+  let context;
+  let themePage;
+
+  async function open(colorScheme) {
+    context = await browser.newContext({ colorScheme });
+    themePage = await context.newPage();
+    await themePage.goto(PAGE_URL);
+  }
+
+  afterEach(async () => {
+    await context?.close();
+    context = undefined;
+  });
+
+  const background = () =>
+    themePage.evaluate(() => getComputedStyle(document.body).backgroundColor);
+
+  const chosen = () =>
+    themePage.evaluate(() => document.documentElement.getAttribute('data-theme'));
+
+  const saved = () => themePage.evaluate(() => localStorage.getItem('theme'));
+
+  test('без выбора страница следует системной теме', async () => {
+    await open('dark');
+
+    assert.equal(await background(), DARK_BG);
+    assert.equal(await chosen(), null, 'без явного выбора атрибута быть не должно');
+    assert.equal(await saved(), null);
+  });
+
+  test('клик меняет фон и цвета', async () => {
+    await open('light');
+    assert.equal(await background(), LIGHT_BG);
+
+    await themePage.click('#theme-toggle');
+
+    assert.equal(await background(), DARK_BG);
+    assert.equal(await chosen(), 'dark');
+    // Меняется не только фон: текст и карточки тоже переключаются на тёмные.
+    const card = await themePage.evaluate(
+      () => getComputedStyle(document.querySelector('.card')).backgroundColor);
+    assert.notEqual(card, 'rgb(255, 255, 255)');
+  });
+
+  test('выбор сохраняется и переживает перезагрузку', async () => {
+    await open('light');
+    await themePage.click('#theme-toggle');
+    assert.equal(await saved(), 'dark');
+
+    await themePage.reload();
+
+    assert.equal(await chosen(), 'dark', 'тема должна примениться сразу при загрузке');
+    assert.equal(await background(), DARK_BG);
+  });
+
+  test('явный выбор перекрывает системную тему', async () => {
+    await open('dark');
+    await themePage.click('#theme-toggle');
+
+    assert.equal(await chosen(), 'light');
+    assert.equal(await background(), LIGHT_BG, 'светлая тема должна победить системную тёмную');
+
+    await themePage.reload();
+    assert.equal(await background(), LIGHT_BG, 'и остаться такой после перезагрузки');
+  });
+
+  test('переключение работает в обе стороны', async () => {
+    await open('light');
+
+    await themePage.click('#theme-toggle');
+    assert.equal(await background(), DARK_BG);
+
+    await themePage.click('#theme-toggle');
+    assert.equal(await background(), LIGHT_BG);
+    assert.equal(await saved(), 'light');
+  });
+
+  test('кнопка подписана и иконка соответствует теме', async () => {
+    await open('light');
+
+    assert.match(await themePage.getAttribute('#theme-toggle', 'aria-label'), /тёмную/);
+    assert.equal(await themePage.locator('#icon-moon').isVisible(), true);
+    assert.equal(await themePage.locator('#icon-sun').isVisible(), false);
+
+    await themePage.click('#theme-toggle');
+
+    assert.match(await themePage.getAttribute('#theme-toggle', 'aria-label'), /светлую/);
+    assert.equal(await themePage.locator('#icon-sun').isVisible(), true);
+    assert.equal(await themePage.locator('#icon-moon').isVisible(), false);
+  });
+
+  test('кнопка доступна с клавиатуры', async () => {
+    await open('light');
+
+    await themePage.focus('#theme-toggle');
+    await themePage.keyboard.press('Enter');
+
+    assert.equal(await background(), DARK_BG);
+  });
+
+  test('страница работает при запрещённом localStorage', async () => {
+    context = await browser.newContext({ colorScheme: 'light' });
+    themePage = await context.newPage();
+    // Приватный режим в некоторых браузерах бросает исключение на любой доступ.
+    await themePage.addInitScript(() => {
+      Object.defineProperty(window, 'localStorage', {
+        get() { throw new Error('доступ к хранилищу запрещён'); },
+      });
+    });
+
+    const errors = [];
+    themePage.on('pageerror', (error) => errors.push(String(error)));
+    await themePage.goto(PAGE_URL);
+
+    await themePage.click('#theme-toggle');
+
+    assert.equal(await background(), DARK_BG, 'переключение должно работать и без хранилища');
+    assert.deepEqual(errors, [], 'необработанных исключений быть не должно');
   });
 });

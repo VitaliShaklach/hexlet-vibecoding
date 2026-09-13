@@ -38,23 +38,46 @@
     --ok: #2f6f4e;
     --warn: #8a5a00;
     --alert: #b3261e;
+    --btn-text: #ffffff;
     --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .06);
+    color-scheme: light;
   }
 
+  /* Тёмная тема применяется в двух случаях: её просит система и пользователь
+     не выбрал светлую явно, либо пользователь выбрал тёмную сам. Набор токенов
+     одинаковый, но объединить правила нельзя — одно живёт внутри @media. */
   @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #14161a;
-      --card: #1d2026;
-      --text: #e8eaed;
-      --muted: #9aa1ab;
-      --line: #2c3038;
-      --accent: #74c39b;
-      --accent-soft: #22322b;
-      --ok: #74c39b;
-      --warn: #e0a95c;
-      --alert: #f2938c;
-      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+    :root:not([data-theme="light"]) {
+    --bg: #14161a;
+    --card: #1d2026;
+    --text: #e8eaed;
+    --muted: #9aa1ab;
+    --line: #2c3038;
+    --accent: #74c39b;
+    --accent-soft: #22322b;
+    --ok: #74c39b;
+    --warn: #e0a95c;
+    --alert: #f2938c;
+    --btn-text: #10231a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+    color-scheme: dark;
     }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #14161a;
+    --card: #1d2026;
+    --text: #e8eaed;
+    --muted: #9aa1ab;
+    --line: #2c3038;
+    --accent: #74c39b;
+    --accent-soft: #22322b;
+    --ok: #74c39b;
+    --warn: #e0a95c;
+    --alert: #f2938c;
+    --btn-text: #10231a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px rgba(0, 0, 0, .3);
+    color-scheme: dark;
   }
 
   * { box-sizing: border-box; }
@@ -77,6 +100,8 @@
     line-height: 1.2;
     margin: 0 0 6px;
     letter-spacing: -.02em;
+    /* Место под кнопку темы: на узких экранах заголовок иначе упирается в неё. */
+    padding-right: 52px;
   }
 
   .subtitle {
@@ -184,7 +209,7 @@
     font: inherit;
     font-size: 15px;
     font-weight: 600;
-    color: #fff;
+    color: var(--btn-text);
     background: var(--accent);
     border: 1px solid var(--accent);
     border-radius: 9px;
@@ -198,9 +223,29 @@
     outline-offset: 2px;
   }
 
-  @media (prefers-color-scheme: dark) {
-    button { color: #10231a; }
+  .theme-toggle {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 10;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text);
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    box-shadow: var(--shadow);
+    cursor: pointer;
   }
+
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); filter: none; }
+
+  .theme-icon { width: 20px; height: 20px; display: block; }
+  .theme-icon[hidden] { display: none; }
 
   .hint {
     font-size: 13px;
@@ -385,8 +430,38 @@
     .total .value { font-size: 38px; }
   }
 </style>
+
+<script>
+  // Выполняется до отрисовки страницы, иначе при сохранённой тёмной теме
+  // мелькнёт белый фон.
+  (function () {
+    try {
+      var saved = localStorage.getItem('theme');
+      if (saved === 'dark' || saved === 'light') {
+        document.documentElement.setAttribute('data-theme', saved);
+      }
+    } catch (error) {
+      // Приватный режим или запрет на хранилище — остаётся системная тема.
+    }
+  }());
+</script>
 </head>
 <body>
+
+<button type="button" class="theme-toggle" id="theme-toggle" aria-label="Сменить тему">
+  <svg class="theme-icon" id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+       focusable="false">
+    <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>
+  </svg>
+  <svg class="theme-icon" id="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+       focusable="false" hidden>
+    <circle cx="12" cy="12" r="4"></circle>
+    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+  </svg>
+</button>
+
 <div class="page">
 
   <h1>Калькулятор калорий</h1>
@@ -1099,6 +1174,53 @@ function calculate() {
   bmiCategoryEl.textContent = category.name;
   bmiCategoryEl.setAttribute('data-level', category.level);
 }
+
+// ---------- Переключатель темы ----------
+// Пока пользователь не выбрал тему явно, атрибута data-theme нет и страница
+// следует системной настройке. Первый клик фиксирует выбор в localStorage.
+var THEME_KEY = 'theme';
+var darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+function chosenTheme() {
+  return document.documentElement.getAttribute('data-theme');
+}
+
+function effectiveTheme() {
+  return chosenTheme() || (darkQuery.matches ? 'dark' : 'light');
+}
+
+function syncToggle(theme) {
+  var dark = theme === 'dark';
+  // Именно toggleAttribute, а не свойство .hidden: у SVG-элементов такого
+  // свойства нет, присваивание молча создало бы обычное поле объекта.
+  document.getElementById('icon-sun').toggleAttribute('hidden', !dark);
+  document.getElementById('icon-moon').toggleAttribute('hidden', dark);
+
+  var label = dark ? 'Включить светлую тему' : 'Включить тёмную тему';
+  var button = document.getElementById('theme-toggle');
+  button.setAttribute('aria-label', label);
+  button.setAttribute('title', label);
+}
+
+document.getElementById('theme-toggle').addEventListener('click', function () {
+  var next = effectiveTheme() === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  syncToggle(next);
+
+  try {
+    localStorage.setItem(THEME_KEY, next);
+  } catch (error) {
+    // Сохранить не вышло — тема переключится, но не переживёт перезагрузку.
+  }
+});
+
+// Если выбора не было, следим за системной темой, чтобы иконка не разошлась
+// с тем, что видно на экране.
+darkQuery.addEventListener('change', function () {
+  if (!chosenTheme()) syncToggle(effectiveTheme());
+});
+
+syncToggle(effectiveTheme());
 
 document.getElementById('form').addEventListener('input', calculate);
 document.getElementById('form').addEventListener('submit', function (event) {
